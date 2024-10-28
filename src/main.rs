@@ -7,7 +7,7 @@ use std::{
 
 pub mod request;
 
-use request::HttpRequest;
+use request::{parse_method, HttpRequest};
 
 fn preview_line(line: &str, size: usize) {
     let line_prev: String = line
@@ -49,8 +49,14 @@ fn handle_client(mut stream: TcpStream) -> IOResult<()> {
         // stream.write(b"> ")?;
 
         let mut line = String::new();
+
         let line_size = reader.read_line(&mut line)?;
         preview_line(&line, line_size);
+
+        let (input, request) = parse_method(&line).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::AddrInUse, "ajnksdhfakjhfgkjsagd")
+        })?;
+        println!("Request: {:?}", request);
 
         if line == "\r\n" {
             println!("breaking!");
