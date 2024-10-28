@@ -24,16 +24,17 @@ pub struct HttpRequest {
     // port: String,
 }
 
-fn map_errs<'a>(error: SerdeError) -> nom::Err<nom::error::Error<&'a str>> {
-    // let g = nom::error::Error::new(&error.to_string()[..], nom::error::ErrorKind::Alpha);
+fn map_errs(error: &SerdeError) -> nom::error::Error<&str> {
+    let g = nom::error::Error::new(&error.to_string()[..], nom::error::ErrorKind::Alpha);
+    g
     // let g = nom::error::Error::new("jebem ti mater u picku", nom::error::ErrorKind::Alpha);
     // let x = nom::Err::Error(g);
-    let g: String = error.to_owned().to_string();
-    let x = nom::Err::Error(nom::error::Error::new(
-        "jebem ti kevu mrtvu",
-        nom::error::ErrorKind::Alpha,
-    ));
-    x
+    // let g: String = error.to_owned().to_string();
+    // let x = nom::Err::Error(nom::error::Error::new(
+    //     "jebem ti kevu mrtvu",
+    //     nom::error::ErrorKind::Alpha,
+    // ));
+    // x
 }
 
 pub fn parse_method(input: &str) -> IResult<&str, HttpRequest> {
