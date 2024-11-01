@@ -1,49 +1,60 @@
-use core::error;
+use std::{collections::HashMap, str::FromStr};
+use std::{
+    io::{BufRead, BufReader, Read, Result as IOResult, Write},
+    net::TcpStream,
 
-use nom::bytes::complete::tag;
-use nom::combinator::map;
-use nom::error::{Error, ParseError};
-use nom::IResult;
-use serde::de::value::Error as SerdeError;
-use serde::de::IntoDeserializer;
-use serde::Deserialize;
+use nom::{branch::alt, bytes::complete::tag, combinator::value, IResult};
 
-// type IResult<T> = nom::IResult<T, T>;
-
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Clone)]
 pub enum Method {
     GET,
     POST,
     PUT,
     DELETE,
 }
-#[derive(Deserialize, Debug)]
+
+type Headers = HashMap<String, String>;
+
+#[derive(Debug)]
 pub struct HttpRequest {
     method: Method,
+    headers: Headers,
+    body: String,
     // host: String,
     // port: String,
 }
 
-fn map_errs(error: &SerdeError) -> nom::error::Error<&str> {
-    let g = nom::error::Error::new(&error.to_string()[..], nom::error::ErrorKind::Alpha);
-    g
-    // let g = nom::error::Error::new("jebem ti mater u picku", nom::error::ErrorKind::Alpha);
-    // let x = nom::Err::Error(g);
-    // let g: String = error.to_owned().to_string();
-    // let x = nom::Err::Error(nom::error::Error::new(
-    //     "jebem ti kevu mrtvu",
-    //     nom::error::ErrorKind::Alpha,
-    // ));
-    // x
+pub fn parse_request_socket(reader: &impl BufRead) {
+    let mut headers = String::new();
+    loop {
+        // stream.write(b"> ")?;
+
+        let mut line = String::new();
+        let line_size = reader.read_line(&mut line)?;
+        headers = format!("{headers}{line}");
+        preview_line(&line, line_size);
+
+        // let (input, request) = parse_method(&line).map_err(|e| {
+        //     std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+        // })?;
+        // println!("Request: {:?}", request);
+
+        if line == "\r\n" {
+            println!("body now...!");
+            break;
+        }
+    }
+
+    println!("Headers: {}", headers);
 }
 
-pub fn parse_method(input: &str) -> IResult<&str, HttpRequest> {
-    let (input, output) = tag("GET")(input)?;
-    // let x = Method::deserialize(output.into_deserializer()).map_err(map_errs)?;
-    // let x = Method::deserialize(output.into_deserializer()).map_err(map_errs);
-    let x: Result<_, SerdeError> = Method::deserialize(output.into_deserializer());
-    let method = x.map_err(map_errs)?;
-    Ok((input, HttpRequest { method }))
+pub fn parse_method(input: &str) -> IResult<&str, Method> {
+    alt((
+        value(Method::GET, tag("GET")),
+        value(Method::POST, tag("POST")),
+        value(Method::PUT, tag("PUT")),
+        value(Method::DELETE, tag("DELETE")),
+    ))(input)
 }
 
 // pub fn parse_headers(line: &str) -> IResult<&str> {}
