@@ -9,7 +9,7 @@ use std::{
 
 pub mod request;
 
-use request::{parse_method, HttpRequest};
+use request::{parse_request_socket, HttpRequest};
 
 fn preview_line(line: &str, size: usize) {
     let line_prev: String = line
@@ -49,7 +49,9 @@ fn handle_client(mut stream: TcpStream) -> IOResult<()> {
 
     let mut reader = BufReader::new(stream.try_clone()?);
 
-    let request = parse_request(reader);
+    let request = parse_request_socket(&mut reader)?;
+
+    println!("Request: {:#?}", request);
 
     // let mut buf = Vec::new();
 
@@ -57,38 +59,20 @@ fn handle_client(mut stream: TcpStream) -> IOResult<()> {
     // stream.read_to_string(&mut s)?;
     // println!("Stream: {}", s);
 
-    let mut headers = String::new();
-    loop {
-        // stream.write(b"> ")?;
-
-        let mut line = String::new();
-        let line_size = reader.read_line(&mut line)?;
-        headers = format!("{headers}{line}");
-        preview_line(&line, line_size);
-
-        // let (input, request) = parse_method(&line).map_err(|e| {
-        //     std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-        // })?;
-        // println!("Request: {:?}", request);
-
-        if line == "\r\n" {
-            println!("body now...!");
-            break;
-        }
-    }
-
-    println!("Headers: {}", headers);
-
     // let x = reader.has_data_left()?;
     // println!("Data left: {}", x);
 
     // let x = reader.fill_buf()?;
 
-    let mut buf = vec![0; 85];
-    reader.read_exact(&mut buf)?;
+    // -------
 
-    let s: String = buf.into_iter().map(|c| c as char).collect();
-    println!("Body: {}", s);
+    // let mut buf = vec![0; 85];
+    // reader.read_exact(&mut buf)?;
+
+    // let s: String = buf.into_iter().map(|c| c as char).collect();
+    // println!("Body: {}", s);
+
+    // --------------------
 
     // for b in buf {
     //     println!("Char: {} -- {:x}", b as char, b as i32);
