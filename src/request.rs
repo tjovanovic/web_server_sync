@@ -65,11 +65,20 @@ pub fn parse_request_socket(
         std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
     })?;
 
+    let mut body = String::new();
+    if let Some(l) = headers.get("Content-Length") {
+        let l = l.parse::<usize>().unwrap();
+        let mut buf = vec![0; l];
+        reader.read_exact(&mut buf)?;
+
+        body = buf.into_iter().map(|c| c as char).collect();
+    }
+
     let request = HttpRequest {
         method,
         route,
         headers,
-        body: String::new(),
+        body,
     };
     Ok(request)
 }

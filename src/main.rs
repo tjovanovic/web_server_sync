@@ -66,12 +66,6 @@ fn handle_client(mut stream: TcpStream) -> IOResult<()> {
 
     // -------
 
-    // let mut buf = vec![0; 85];
-    // reader.read_exact(&mut buf)?;
-
-    // let s: String = buf.into_iter().map(|c| c as char).collect();
-    // println!("Body: {}", s);
-
     // --------------------
 
     // for b in buf {
