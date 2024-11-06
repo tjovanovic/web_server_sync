@@ -3,7 +3,10 @@ use std::{collections::HashMap, io::Read, iter::repeat_with};
 
 use nom::{
     branch::alt,
-    bytes::streaming::take_until1,
+    bytes::{
+        complete::tag,
+        streaming::{take_until, take_until1},
+    },
     character::complete::crlf,
     combinator::value,
     error::ParseError,
@@ -13,6 +16,9 @@ use nom::{
 };
 
 use crate::request;
+
+const BUFFER_SIZE: usize = 32;
+const CLRF: &str = "\r\n";
 
 #[derive(Debug, Clone)]
 pub enum Method {
@@ -89,86 +95,103 @@ fn preview_bytes(input: &[u8]) {
 }
 
 pub fn parse_request_socket(stream: &mut impl Read) -> MyResult<HttpRequest> {
-    let mut buffer = vec![0; 10];
-    let g = stream.read(&mut buffer)?;
-    println!("Read {g} bytes...");
+    let mut rx = [0u8; BUFFER_SIZE];
+    let mut received = Vec::with_capacity(1024);
 
-    let mut request_line =
-        take_until1::<_, _, BufferNomError>("\r\n")(&buffer[..]);
+    let bytes_read = stream.read(&mut rx)?;
+    received.extend_from_slice(&rx[..bytes_read]);
+    let mut request_line = take_until1::<_, _, BufferNomError>(CLRF)(received.as_slice());
 
     while !is_complete(&request_line) {
-        let g = stream.read(&mut buffer)?;
-        println!("Read {g} bytes...");
-        request_line = take_until1::<_, _, BufferNomError>("\r\n")(&buffer[..]);
+        let bytes_read = stream.read(&mut rx)?;
+        received.extend_from_slice(&rx[..bytes_read]);
+        request_line = take_until1::<_, _, BufferNomError>(CLRF)(received.as_slice());
     }
 
-    let (remaining, parsed) = request_line?;
-
+    let (_, parsed) = request_line?;
     preview_bytes(parsed);
-    preview_bytes(remaining);
+    let (_, (route, method)) = parse_request_line(&parsed)?;
+    received.drain(..parsed.len());
 
-    buffer.clear();
-    buffer.extend_from_slice(remaining);
+    let (_, parsed) = crlf(received.as_slice())?;
+    received.drain(..parsed.len());
 
-    Err(Error::Other("GG".into()))
+    println!("Parsed: {:?}, {:?}", route, method);
 
-    // let (_, (route, method)) = parse_request_line(&request_line)?;
+    let mut headers = HashMap::new();
+    let bytes_read = stream.read(&mut rx)?;
+    received.extend_from_slice(&rx[..bytes_read]);
 
-    // let mut headers_raw = String::new();
-    // loop {
-    //     line.clear();
-    //     reader.read_line(&mut line)?;
-    //     headers_raw = format!("{headers_raw}{line}");
-    //     println!("> Line: {}", line);
+    loop {
+        let mut header_line = take_until::<_, _, BufferNomError>(CLRF)(received.as_slice());
+        while !is_complete(&header_line) {
+            let bytes_read = stream.read(&mut rx)?;
+            received.extend_from_slice(&rx[..bytes_read]);
+            header_line = take_until::<_, _, BufferNomError>(CLRF)(received.as_slice());
+        }
 
-    //     if line == "\r\n" {
-    //         println!("body now...!");
-    //         break;
-    //     }
-    // }
-    // println!("Headers raw:\n{}", headers_raw);
+        let (_, header_line) = header_line?;
 
-    // let (_, headers) = parse_headers(&headers_raw)?;
+        if header_line == "".as_bytes() {
+            println!("GG!!");
+            break;
+        }
 
-    // let mut body = String::new();
-    // if let Some(l) = headers.get("Content-Length") {
-    //     let l = l.parse::<usize>().unwrap();
-    //     let mut buf = vec![0; l];
-    //     reader.read_exact(&mut buf)?;
+        let (_, (key, val)) = parse_header(header_line)?;
+        headers.insert(
+            String::from_utf8_lossy(key).into_owned(),
+            String::from_utf8_lossy(val).into_owned(),
+        );
+        received.drain(..header_line.len());
 
-    //     body = buf.into_iter().map(|c| c as char).collect();
-    // }
+        let (_, parsed) = crlf(received.as_slice())?;
+        received.drain(..parsed.len());
+    }
+    println!("Headers: {:?}", headers);
 
-    // let request = HttpRequest {
-    //     method,
-    //     route,
-    //     headers,
-    //     body,
-    // };
-    // Ok(request)
+    let (_, parsed) = crlf(received.as_slice())?;
+    received.drain(..parsed.len());
+
+    let mut body = String::new();
+    if let Some(l) = headers.get("Content-Length") {
+        let l = l.parse::<usize>().unwrap();
+        while received.len() < l {
+            let bytes_read = stream.read(&mut rx)?;
+            received.extend_from_slice(&rx[..bytes_read]);
+        }
+        body = String::from_utf8_lossy(received.as_slice()).into_owned();
+    }
+
+    let request = HttpRequest {
+        method,
+        route,
+        headers,
+        body,
+    };
+    Ok(request)
 }
 
-// fn parse_request_line(input: &str) -> IResult<&str, (Route, Method)> {
-//     let (input, (method, _, route)) =
-//         tuple((parse_method, tag(" "), parse_route))(input)?;
+fn parse_request_line(input: &[u8]) -> IResult<&[u8], (Route, Method)> {
+    let (input, (method, _, route)) = tuple((parse_method, tag(" "), parse_route))(input)?;
 
-//     Ok((input, (route, method)))
-// }
+    Ok((input, (route, method)))
+}
 
-// fn parse_route(input: &str) -> IResult<&str, Route> {
-//     let (input, parsed) = take_until1(" ")(input)?;
-//     let route = Route(parsed.to_owned());
-//     Ok((input, route))
-// }
+fn parse_route(input: &[u8]) -> IResult<&[u8], Route> {
+    let (input, parsed) = take_until1(" ")(input)?;
+    let s = String::from_utf8_lossy(parsed).into_owned();
+    let route = Route(s);
+    Ok((input, route))
+}
 
-// fn parse_method(input: &str) -> IResult<&str, Method> {
-//     alt((
-//         value(Method::GET, tag("GET")),
-//         value(Method::POST, tag("POST")),
-//         value(Method::PUT, tag("PUT")),
-//         value(Method::DELETE, tag("DELETE")),
-//     ))(input)
-// }
+fn parse_method(input: &[u8]) -> IResult<&[u8], Method> {
+    alt((
+        value(Method::GET, tag("GET")),
+        value(Method::POST, tag("POST")),
+        value(Method::PUT, tag("PUT")),
+        value(Method::DELETE, tag("DELETE")),
+    ))(input)
+}
 
 // fn preview_line(line: &str) -> String {
 //     line.chars()
@@ -196,13 +219,9 @@ pub fn parse_request_socket(stream: &mut impl Read) -> MyResult<HttpRequest> {
 //     Ok((input, headers))
 // }
 
-// fn parse_header(input: &str) -> IResult<&str, (&str, &str)> {
-//     println!("To parse: {}", preview_line(input));
-//     let (input, key) = take_until1(":")(input)?;
-//     let (input, _) = tag(":")(input)?;
-//     let (remainder, _) = many0(tag(" "))(input)?;
-//     println!("Remainder: {}", remainder);
-//     // let (input, value) = take_until1("\r\n")(input)?;
-
-//     Ok((input, (key, remainder)))
-// }
+fn parse_header(input: &[u8]) -> IResult<&[u8], (&[u8], &[u8])> {
+    let (input, key) = take_until1(":")(input)?;
+    let (input, _) = tag(":")(input)?;
+    let (value, _) = many0(tag(" "))(input)?;
+    Ok((input, (key, value)))
+}
