@@ -73,16 +73,6 @@ pub struct HttpRequest {
 type BufferNomError<'a> = nom::error::Error<&'a [u8]>;
 type BufferNomResult<'a> = (&'a [u8], &'a [u8]);
 
-fn is_complete(g: &Result<BufferNomResult, nom::Err<BufferNomError>>) -> bool {
-    match g {
-        Ok(_) => true,
-        Err(e) => match e {
-            nom::Err::Incomplete(_) => false,
-            _ => true,
-        },
-    }
-}
-
 fn preview_bytes(input: &[u8]) {
     print!("Preview > ");
     for x in input {
@@ -157,17 +147,6 @@ fn parse_method(input: &[u8]) -> IResult<&[u8], Method> {
     ))(input)
 }
 
-// fn preview_line(line: &str) -> String {
-//     line.chars()
-//         .into_iter()
-//         .map(|c| match c {
-//             '\r' => "\\r".to_owned(),
-//             '\n' => "\\n".to_owned(),
-//             c => c.to_string(),
-//         })
-//         .collect()
-// }
-
 fn parse_headers(
     received: &mut Vec<u8>,
     rx: &mut [u8],
@@ -233,4 +212,14 @@ fn parse_header(input: &[u8]) -> IResult<&[u8], (&[u8], &[u8])> {
     let (input, _) = tag(":")(input)?;
     let (value, _) = many0(tag(" "))(input)?;
     Ok((input, (key, value)))
+}
+
+fn is_complete(input: &Result<BufferNomResult, nom::Err<BufferNomError>>) -> bool {
+    if let Err(e) = input {
+        return match e {
+            nom::Err::Incomplete(_) => false,
+            _ => true,
+        };
+    }
+    true
 }
