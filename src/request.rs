@@ -1,4 +1,7 @@
-use std::{collections::HashMap, io::Read, net::TcpStream};
+use std::{
+    collections::HashMap,
+    io::{Cursor, Read},
+};
 
 use nom::{
     branch::alt,
@@ -81,14 +84,20 @@ fn preview_bytes(input: &[u8]) {
     println!();
 }
 
-pub struct HttpStream {
-    stream: TcpStream,
+pub struct HttpStream<S>
+where
+    S: Read,
+{
+    stream: S,
     rx: [u8; BUFFER_SIZE],
     received: Vec<u8>,
 }
 
-impl HttpStream {
-    pub fn new(stream: TcpStream) -> Self {
+impl<S> HttpStream<S>
+where
+    S: Read,
+{
+    pub fn new(stream: S) -> Self {
         HttpStream {
             stream,
             rx: [0u8; BUFFER_SIZE],
@@ -97,9 +106,13 @@ impl HttpStream {
     }
 
     pub fn parse_request_socket(&mut self) -> MyResult<HttpRequest> {
+        println!("GGs!");
         let (method, route) = self.parse_request_line()?;
+        println!("WTF!");
         let headers = self.parse_headers()?;
+        println!("FU BITCH!");
         let body = self.parse_body(&headers)?;
+        println!("GGs!");
         Ok(HttpRequest {
             method,
             route,
@@ -205,3 +218,28 @@ fn is_complete(input: &Result<BufferNomResult, nom::Err<BufferNomError>>) -> boo
     }
     true
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn exploration() {
+//         let request_raw = "\
+//             POST /wtfrouting HTTP/1.1\r\n\
+//             Content-Length: 64\r\n\
+//             Host: localhost:3333\r\n\
+//             \r\n
+//             {\r\n\
+//                 \"adfsdfsdfsdf\": \"dfsgdfdfhdfgs\",\r\n\
+//                 \"afdfdsfsf\": \"sdfsdfsdfsdfsd\"\r\n\
+//             }\r\n"
+//             .as_bytes();
+
+//         let mut stream = HttpStream::new(Cursor::new(request_raw));
+
+//         let request = stream.parse_request_socket().unwrap();
+//         println!("{:?}", request);
+//         assert_eq!(2 + 2, 4);
+//     }
+// }
