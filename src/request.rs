@@ -1,11 +1,12 @@
 use std::{
     collections::HashMap,
-    io::{Cursor, Read},
+    io::{self, Cursor, Read},
 };
 
 use nom::{
     branch::alt,
     bytes::{
+        self,
         complete::tag,
         streaming::{take_until, take_until1},
     },
@@ -20,7 +21,7 @@ use nom::{
 const BUFFER_SIZE: usize = 32;
 const CLRF: &str = "\r\n";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Method {
     GET,
     POST,
@@ -62,10 +63,10 @@ impl<I> ParseError<I> for Error {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Route(pub String);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct HttpRequest {
     method: Method,
     route: Route,
@@ -91,6 +92,7 @@ where
     stream: S,
     rx: [u8; BUFFER_SIZE],
     received: Vec<u8>,
+    stream_ended: bool,
 }
 
 impl<S> HttpStream<S>
@@ -102,17 +104,14 @@ where
             stream,
             rx: [0u8; BUFFER_SIZE],
             received: Vec::with_capacity(1024),
+            stream_ended: false,
         }
     }
 
     pub fn parse_request_socket(&mut self) -> MyResult<HttpRequest> {
-        println!("GGs!");
         let (method, route) = self.parse_request_line()?;
-        println!("WTF!");
         let headers = self.parse_headers()?;
-        println!("FU BITCH!");
         let body = self.parse_body(&headers)?;
-        println!("GGs!");
         Ok(HttpRequest {
             method,
             route,
@@ -122,7 +121,15 @@ where
     }
 
     fn load_next_chunk(&mut self) -> MyResult<()> {
+        if self.stream_ended {
+            // A lil bit of a hack -- needs to be refactored
+            return Ok(());
+        }
         let bytes_read = self.stream.read(&mut self.rx)?;
+        println!("Read {} bytes...", bytes_read);
+        if bytes_read < BUFFER_SIZE {
+            self.stream_ended = true;
+        }
         self.received.extend_from_slice(&self.rx[..bytes_read]);
         Ok(())
     }
@@ -167,7 +174,6 @@ where
             let (_, (key, val)) = parse_header(header_line.as_slice())?;
             headers.insert(key, val);
         }
-
         Ok(headers)
     }
 
@@ -219,27 +225,37 @@ fn is_complete(input: &Result<BufferNomResult, nom::Err<BufferNomError>>) -> boo
     true
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     #[test]
-//     fn exploration() {
-//         let request_raw = "\
-//             POST /wtfrouting HTTP/1.1\r\n\
-//             Content-Length: 64\r\n\
-//             Host: localhost:3333\r\n\
-//             \r\n
-//             {\r\n\
-//                 \"adfsdfsdfsdf\": \"dfsgdfdfhdfgs\",\r\n\
-//                 \"afdfdsfsf\": \"sdfsdfsdfsdfsd\"\r\n\
-//             }\r\n"
-//             .as_bytes();
+    #[test]
+    fn basic_request() {
+        let request_raw = "\
+            POST /wtfrouting HTTP/1.1\r\n\
+            Content-Length: 20\r\n\
+            Host: localhost:3333\r\n\
+            \r\n\
+            {\
+                \"field\": \"example\"\
+            }"
+        .as_bytes();
 
-//         let mut stream = HttpStream::new(Cursor::new(request_raw));
+        let mut stream = HttpStream::new(Cursor::new(request_raw));
 
-//         let request = stream.parse_request_socket().unwrap();
-//         println!("{:?}", request);
-//         assert_eq!(2 + 2, 4);
-//     }
-// }
+        let request = stream.parse_request_socket().unwrap();
+        println!("{:?}", request);
+        let headers: HashMap<String, String> = HashMap::from([
+            ("Content-Length".into(), "20".into()),
+            ("Host".into(), "localhost:3333".into()),
+        ]);
+
+        let actual_request = HttpRequest {
+            method: Method::POST,
+            route: Route("/wtfrouting".to_owned()),
+            headers,
+            body: "{\"field\": \"example\"}".into(),
+        };
+        assert_eq!(request, actual_request);
+    }
+}
