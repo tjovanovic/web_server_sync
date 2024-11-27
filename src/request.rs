@@ -1,12 +1,8 @@
-use std::{
-    collections::HashMap,
-    io::{self, Cursor, Read},
-};
+use std::{collections::HashMap, io};
 
 use nom::{
     branch::alt,
     bytes::{
-        self,
         complete::tag,
         streaming::{take_until, take_until1},
     },
@@ -35,7 +31,7 @@ pub type MyResult<T> = Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
-    IOError(std::io::Error),
+    IOError(io::Error),
     NomError(String),
     Other(String),
 }
@@ -46,8 +42,8 @@ impl From<nom::Err<nom::error::Error<&[u8]>>> for Error {
     }
 }
 
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
         Self::IOError(value)
     }
 }
@@ -77,17 +73,9 @@ pub struct HttpRequest {
 type BufferNomError<'a> = nom::error::Error<&'a [u8]>;
 type BufferNomResult<'a> = (&'a [u8], &'a [u8]);
 
-fn preview_bytes(input: &[u8]) {
-    print!("Preview > ");
-    for x in input {
-        print!("{}", *x as char);
-    }
-    println!();
-}
-
 pub struct HttpStream<S>
 where
-    S: Read,
+    S: io::Read,
 {
     stream: S,
     rx: [u8; BUFFER_SIZE],
@@ -97,7 +85,7 @@ where
 
 impl<S> HttpStream<S>
 where
-    S: Read,
+    S: io::Read,
 {
     pub fn new(stream: S) -> Self {
         HttpStream {
@@ -241,21 +229,18 @@ mod tests {
             }"
         .as_bytes();
 
-        let mut stream = HttpStream::new(Cursor::new(request_raw));
+        let mut stream = HttpStream::new(io::Cursor::new(request_raw));
 
-        let request = stream.parse_request_socket().unwrap();
-        println!("{:?}", request);
-        let headers: HashMap<String, String> = HashMap::from([
-            ("Content-Length".into(), "20".into()),
-            ("Host".into(), "localhost:3333".into()),
-        ]);
-
-        let actual_request = HttpRequest {
+        let parsed_request = stream.parse_request_socket().unwrap();
+        let expected_request = HttpRequest {
             method: Method::POST,
             route: Route("/wtfrouting".to_owned()),
-            headers,
+            headers: HashMap::from([
+                ("Content-Length".into(), "20".into()),
+                ("Host".into(), "localhost:3333".into()),
+            ]),
             body: "{\"field\": \"example\"}".into(),
         };
-        assert_eq!(request, actual_request);
+        assert_eq!(parsed_request, expected_request);
     }
 }
