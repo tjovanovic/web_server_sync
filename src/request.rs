@@ -143,6 +143,21 @@ where
         Ok(result)
     }
 
+    fn fetch_next_line_2(&mut self) -> MyResult<BufferNomResult> {
+        let result;
+        loop {
+            self.load_next_chunk()?;
+
+            let line_raw =
+                take_until::<_, _, BufferNomError>(CLRF)(self.received.as_slice());
+            if is_complete(&line_raw) {
+                result = line_raw?;
+                break;
+            }
+        }
+        Ok(result)
+    }
+
     fn parse_request_line(&mut self) -> MyResult<(Method, Route)> {
         let parsed = self.fetch_next_line()?;
         let (_, (method, _, route)) =
